@@ -553,7 +553,14 @@ function update() { draw(); if (getTestVector()) runTest(); }
 
 // ---------- Inicialización ----------
 
-document.getElementById("addVector").addEventListener("click", () => { addVectorRow(); update(); });
+document.getElementById("addVector").addEventListener("click", () => {
+  // Vector aleatorio en la esfera unitaria, componentes redondeadas a 2 decimales
+  const u = [Math.random()-0.5, Math.random()-0.5, Math.random()-0.5];
+  const n = Math.sqrt(u[0]**2 + u[1]**2 + u[2]**2);
+  const vals = u.map(x => String(Math.round(x/n * 100)/100));
+  addVectorRow(vals);
+  update();
+});
 document.getElementById("updateBtn").addEventListener("click", update);
 document.getElementById("testBtn").addEventListener("click", runTest);
 document.getElementById("showTest").addEventListener("change", update);
