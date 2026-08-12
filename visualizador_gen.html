@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Visualizador de Combinaciones Lineales en R³</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1220;
+    --panel: #1a1e33;
+    --panel-2: #232842;
+    --accent: #6ea8fe;
+    --accent-2: #7ee787;
+    --text: #e6e8f0;
+    --muted: #9aa0b5;
+    --danger: #ff6b6b;
+    --border: #2c3252;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+  .sidebar {
+    background: var(--panel);
+    padding: 20px;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+  h2 { font-size: 14px; margin: 18px 0 8px; color: var(--accent); }
+  .vector-row {
+    display: grid;
+    grid-template-columns: 28px repeat(3, 1fr) 30px;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .vector-row .label { font-weight: 600; color: var(--accent-2); font-size: 13px; }
+  input[type="text"] {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 6px;
+    border-radius: 6px;
+    font-size: 13px;
+    text-align: center;
+  }
+  input[type="text"]:focus { outline: none; border-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: #0b0e1a;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  button.remove { background: transparent; color: var(--danger); padding: 2px 6px; font-size: 16px; }
+  .row-buttons { display: flex; gap: 8px; margin: 10px 0; }
+  .test-row {
+    display: grid;
+    grid-template-columns: 28px repeat(3, 1fr);
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .result {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .result.in { background: rgba(126,231,135,0.12); border: 1px solid var(--accent-2); }
+  .result.out { background: rgba(255,107,107,0.12); border: 1px solid var(--danger); }
+  .info-box {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 10px;
+  }
+  .info-box .dim { color: var(--accent); font-weight: 600; font-size: 14px; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; color: var(--accent-2); }
+  #plot { width: 100%; height: 100vh; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .checkbox-row input { width: auto; }
+</style>
+</head>
+<body>
+  <div class="sidebar">
+    <h1>Combinaciones lineales en R³</h1>
+    <div class="subtitle">Visualizá el gen{ v₁, v₂, … } y probá pertenencia.</div>
+
+    <h2>Vectores generadores</h2>
+    <div id="vectors"></div>
+    <div class="hint">Acepta fracciones y decimales: <code>3/10</code>, <code>0.2</code>, <code>-1</code></div>
+    <div class="row-buttons">
+      <button id="addVector" class="secondary">+ Agregar vector</button>
+    </div>
+
+    <div class="info-box">
+      Dimensión de gen{ }: <span id="dim" class="dim">—</span>
+      <div id="dimDesc"></div>
+    </div>
+
+    <h2>Vector de prueba</h2>
+    <div class="test-row">
+      <span class="label" style="color:var(--danger); font-weight:600;">w</span>
+      <input type="text" id="tx" value="1" />
+      <input type="text" id="ty" value="1" />
+      <input type="text" id="tz" value="1" />
+    </div>
+    <div class="row-buttons">
+      <button id="testBtn">¿Pertenece a gen{ }?</button>
+    </div>
+    <div id="testResult"></div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="showTest" checked />
+      <label for="showTest">Mostrar vector de prueba en el gráfico</label>
+    </div>
+
+    <div class="row-buttons" style="margin-top:16px;">
+      <button id="updateBtn">Actualizar gráfico</button>
+    </div>
+  </div>
+
+  <div id="plot"></div>
+
+<script>
+// ---------- Utilidades generales ----------
+
+function debounce(fn, delay) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); };
+}
+
+const debouncedUpdate = debounce(() => update(), 300);
+
+// ---------- Utilidades de parseo y álgebra ----------
+
+// Convierte "3/10", "0.2", "-1" a número
+function parseNum(s) {
+  s = String(s).trim();
+  if (s === "" ) return NaN;
+  if (s.includes("/")) {
+    const [a, b] = s.split("/");
+    return parseFloat(a) / parseFloat(b);
+  }
+  return parseFloat(s);
+}
+
+// Rango de una matriz (lista de vectores columna) por eliminación gaussiana
+function rank(vectors) {
+  // Copiamos las filas (cada vector es una fila para simplificar)
+  const M = vectors.map(v => v.slice());
+  const rows = M.length;
+  if (rows === 0) return 0;
+  const cols = M[0].length;
+  let r = 0;
+  const eps = 1e-9;
+  for (let c = 0; c < cols && r < rows; c++) {
+    // Buscar pivote
+    let piv = -1, max = eps;
+    for (let i = r; i < rows; i++) {
+      if (Math.abs(M[i][c]) > max) { max = Math.abs(M[i][c]); piv = i; }
+    }
+    if (piv === -1) continue;
+    [M[r], M[piv]] = [M[piv], M[r]];
+    // Normalizar y eliminar
+    for (let i = 0; i < rows; i++) {
+      if (i !== r && Math.abs(M[i][c]) > eps) {
+        const f = M[i][c] / M[r][c];
+        for (let j = c; j < cols; j++) M[i][j] -= f * M[r][j];
+      }
+    }
+    r++;
+  }
+  return r;
+}
+
+// Producto escalar y cruz
+function dot(a, b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+function cross(a, b) {
+  return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+}
+function norm(a) { return Math.sqrt(dot(a,a)); }
+
+// ¿w pertenece al espacio generado por 'vectors'?
+// Comparamos rank(vectors) con rank(vectors + w). Si son iguales -> pertenece.
+function belongs(vectors, w) {
+  const base = rank(vectors);
+  const ext = rank([...vectors, w]);
+  return { belongs: base === ext, rankBase: base, rankExt: ext };
+}
+
+// Encuentra coeficientes c tales que  c₁v₁ + c₂v₂ + … = w.
+// Elige un conjunto de generadores independientes y asigna 0 al resto.
+// Devuelve un array con un coeficiente por cada vector de 'vectors', o null.
+function findCoefficients(vectors, w) {
+  // Índices de vectores independientes que forman una base de gen{ }
+  const baseIdx = [];
+  const basis = [];
+  vectors.forEach((v, i) => {
+    if (rank([...basis, v]) > basis.length) { basis.push(v); baseIdx.push(i); }
+  });
+  const k = basis.length;
+  if (k === 0) {
+    // gen{ } = {0}: solo pertenece el vector nulo
+    return w.every(x => Math.abs(x) < 1e-9) ? vectors.map(() => 0) : null;
+  }
+  // Resolvemos (BᵀB) c = Bᵀw  (sistema k×k, B tiene los vectores base como columnas)
+  const A = [], rhs = [];
+  for (let i = 0; i < k; i++) {
+    A.push([]);
+    for (let j = 0; j < k; j++) A[i].push(dot(basis[i], basis[j]));
+    rhs.push(dot(basis[i], w));
+  }
+  const sol = solveLinear(A, rhs);
+  if (!sol) return null;
+  // Verificamos que la combinación reproduzca w (si no, w no pertenece)
+  const rec = [0, 0, 0];
+  basis.forEach((v, i) => { for (let d = 0; d < 3; d++) rec[d] += sol[i] * v[d]; });
+  if (rec.some((x, d) => Math.abs(x - w[d]) > 1e-6)) return null;
+  // Armamos el vector completo de coeficientes (0 para los dependientes)
+  const coeffs = vectors.map(() => 0);
+  baseIdx.forEach((idx, i) => { coeffs[idx] = sol[i]; });
+  return coeffs;
+}
+
+// Resuelve A x = b (A cuadrada) por eliminación gaussiana. Devuelve x o null.
+function solveLinear(A, b) {
+  const n = A.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let piv = c;
+    for (let i = c + 1; i < n; i++) if (Math.abs(M[i][c]) > Math.abs(M[piv][c])) piv = i;
+    if (Math.abs(M[piv][c]) < 1e-12) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    for (let i = 0; i < n; i++) {
+      if (i === c) continue;
+      const f = M[i][c] / M[c][c];
+      for (let j = c; j <= n; j++) M[i][j] -= f * M[c][j];
+    }
+  }
+  return M.map((row, i) => row[n] / row[i]);
+}
+
+// ---------- Estado / UI ----------
+
+const vectorsDiv = document.getElementById("vectors");
+let vectorCount = 0;
+
+const defaultVectors = [
+  ["3/10", "1", "0"],
+  ["1/5", "0", "1"],
+];
+
+function addVectorRow(vals = ["", "", ""]) {
+  vectorCount++;
+  const idx = vectorCount;
+  const row = document.createElement("div");
+  row.className = "vector-row";
+  row.dataset.id = idx;
+  row.innerHTML = `
+    <span class="label">v${idx}</span>
+    <input type="text" value="${vals[0]}" />
+    <input type="text" value="${vals[1]}" />
+    <input type="text" value="${vals[2]}" />
+    <button class="remove" title="Eliminar">×</button>
+  `;
+  row.querySelector(".remove").addEventListener("click", () => {
+    row.remove();
+    update();
+  });
+  row.querySelectorAll("input").forEach(inp =>
+    inp.addEventListener("input", debouncedUpdate)
+  );
+  vectorsDiv.appendChild(row);
+}
+
+function getVectors() {
+  const rows = [...vectorsDiv.querySelectorAll(".vector-row")];
+  const vecs = [];
+  for (const row of rows) {
+    const inputs = row.querySelectorAll("input");
+    const v = [parseNum(inputs[0].value), parseNum(inputs[1].value), parseNum(inputs[2].value)];
+    if (v.every(x => !isNaN(x))) vecs.push(v);
+  }
+  return vecs;
+}
+
+function getTestVector() {
+  const w = [parseNum(document.getElementById("tx").value),
+             parseNum(document.getElementById("ty").value),
+             parseNum(document.getElementById("tz").value)];
+  return w.every(x => !isNaN(x)) ? w : null;
+}
+
+// ---------- Construcción del gráfico ----------
+
+function arrowTrace(v, color, name) {
+  // Línea desde el origen + cono en la punta
+  const line = {
+    type: "scatter3d", mode: "lines",
+    x: [0, v[0]], y: [0, v[1]], z: [0, v[2]],
+    line: { color, width: 6 },
+    name, showlegend: true
+  };
+  const head = {
+    type: "cone",
+    x: [v[0]], y: [v[1]], z: [v[2]],
+    u: [v[0]], v: [v[1]], w: [v[2]],
+    sizemode: "absolute", sizeref: 0.25,
+    anchor: "tip",
+    colorscale: [[0, color],[1, color]], showscale: false,
+    hoverinfo: "skip"
+  };
+  return [line, head];
+}
+
+function spanTraces(vectors, r, S) {
+  const traces = [];
+  if (r === 1) {
+    // Línea: dirección de cualquier vector no nulo
+    const d = vectors.find(v => norm(v) > 1e-9);
+    const dn = d.map(x => x / norm(d));
+    traces.push({
+      type: "scatter3d", mode: "lines",
+      x: [-S*dn[0], S*dn[0]], y: [-S*dn[1], S*dn[1]], z: [-S*dn[2], S*dn[2]],
+      line: { color: "#7ee787", width: 4 },
+      name: "gen{ } (recta)", opacity: 0.9
+    });
+  } else if (r === 2) {
+    // Plano: dos vectores independientes forman una base
+    const basis = independentBasis(vectors, 2);
+    let [a, b] = basis;
+    // Normalizar los vectores base: garantiza que el plano cubra toda la escena
+    // sin importar la magnitud de los vectores ingresados
+    const na = norm(a), nb = norm(b);
+    if (na > 1e-9) a = a.map(x => x / na);
+    if (nb > 1e-9) b = b.map(x => x / nb);
+    const gx = [], gy = [], gz = [];
+    const N = 28;
+    // Extender el rango paramétrico 5× para cubrir la escena con cualquier orientación
+    const Sp = S * 5;
+    for (let i = 0; i <= N; i++) {
+      const rowx = [], rowy = [], rowz = [];
+      const s = -Sp + (2*Sp) * i / N;
+      for (let j = 0; j <= N; j++) {
+        const t = -Sp + (2*Sp) * j / N;
+        rowx.push(s*a[0] + t*b[0]);
+        rowy.push(s*a[1] + t*b[1]);
+        rowz.push(s*a[2] + t*b[2]);
+      }
+      gx.push(rowx); gy.push(rowy); gz.push(rowz);
+    }
+    traces.push({
+      type: "surface", x: gx, y: gy, z: gz,
+      colorscale: [[0,"#2f855a"],[1,"#7ee787"]],
+      opacity: 0.5, showscale: false, name: "gen{ } (plano)",
+      hoverinfo: "skip", showlegend: true
+    });
+  } else if (r === 3) {
+    // gen{ } = todo R³. Resaltamos el volumen en verde semitransparente.
+    traces.push(...cubeTraces(S * 0.9));
+  }
+  return traces;
+}
+
+// Obtiene 'k' vectores linealmente independientes de la lista
+function independentBasis(vectors, k) {
+  const basis = [];
+  for (const v of vectors) {
+    if (rank([...basis, v]) > basis.length) {
+      basis.push(v);
+      if (basis.length === k) break;
+    }
+  }
+  return basis;
+}
+
+// Frame de referencia: ejes canónicos e₁, e₂, e₃ resaltados, siempre visibles.
+function referenceFrame(S) {
+  const axes = [
+    { dir: [1, 0, 0], name: "x₁" },
+    { dir: [0, 1, 0], name: "x₂" },
+    { dir: [0, 0, 1], name: "x₃" },
+  ];
+  const color = "#5a6180";
+  const traces = [];
+  axes.forEach((ax) => {
+    // Eje completo, de -S a +S
+    traces.push({
+      type: "scatter3d", mode: "lines",
+      x: [-S*ax.dir[0], S*ax.dir[0]],
+      y: [-S*ax.dir[1], S*ax.dir[1]],
+      z: [-S*ax.dir[2], S*ax.dir[2]],
+      line: { color, width: 3 },
+      showlegend: false, hoverinfo: "skip"
+    });
+    // Etiqueta en la punta positiva
+    traces.push({
+      type: "scatter3d", mode: "text",
+      x: [S*ax.dir[0]*1.05], y: [S*ax.dir[1]*1.05], z: [S*ax.dir[2]*1.05],
+      text: [ax.name],
+      textfont: { color: "#9aa0b5", size: 15 },
+      showlegend: false, hoverinfo: "skip"
+    });
+  });
+  return traces;
+}
+
+function cubeTraces(f) {
+  // 6 surface traces (una por cara) para correcta transparencia en WebGL.
+  // Un único mesh3d sufre depth-sorting incorrecto con opacidad baja.
+  const faceData = [
+    // +X
+    { x: [[f,f],[f,f]],   y: [[-f,-f],[f,f]],   z: [[-f,f],[-f,f]] },
+    // -X
+    { x: [[-f,-f],[-f,-f]], y: [[-f,-f],[f,f]], z: [[-f,f],[-f,f]] },
+    // +Y
+    { x: [[-f,-f],[f,f]], y: [[f,f],[f,f]],     z: [[-f,f],[-f,f]] },
+    // -Y
+    { x: [[-f,-f],[f,f]], y: [[-f,-f],[-f,-f]], z: [[-f,f],[-f,f]] },
+    // +Z
+    { x: [[-f,-f],[f,f]], y: [[-f,f],[-f,f]],   z: [[f,f],[f,f]] },
+    // -Z
+    { x: [[-f,-f],[f,f]], y: [[-f,f],[-f,f]],   z: [[-f,-f],[-f,-f]] },
+  ];
+  return faceData.map(({ x, y, z }, idx) => ({
+    type: "surface", x, y, z,
+    colorscale: [[0,"#7ee787"],[1,"#7ee787"]],
+    opacity: 0.15,
+    showscale: false,
+    name: idx === 0 ? "gen{ } = R³" : undefined,
+    showlegend: idx === 0,
+    hoverinfo: "skip"
+  }));
+}
+
+function draw() {
+  const vectors = getVectors();
+  const r = rank(vectors);
+
+  // Escala del gráfico según los datos
+  let maxc = 1;
+  vectors.forEach(v => v.forEach(x => maxc = Math.max(maxc, Math.abs(x))));
+  const w = getTestVector();
+  if (w) w.forEach(x => maxc = Math.max(maxc, Math.abs(x)));
+  const S = Math.max(2, maxc * 2);
+
+  const traces = [];
+
+  // Frame de referencia (ejes canónicos), siempre visible
+  traces.push(...referenceFrame(S));
+
+  // gen{ }
+  traces.push(...spanTraces(vectors, r, S));
+
+  // Vectores generadores (flechas)
+  const palette = ["#6ea8fe", "#f6c177", "#c792ea", "#4dd0e1", "#ffab91"];
+  vectors.forEach((v, i) => {
+    traces.push(...arrowTrace(v, palette[i % palette.length], `v${i+1}`));
+  });
+
+  // Vector de prueba
+  if (w && document.getElementById("showTest").checked) {
+    traces.push(...arrowTrace(w, "#ff6b6b", "w (prueba)"));
+  }
+
+  const layout = {
+    paper_bgcolor: "#0f1220",
+    scene: {
+      xaxis: { title: "", range: [-S, S], showgrid: false, zeroline: false, showbackground: false, showticklabels: false, showspikes: false, visible: false },
+      yaxis: { title: "", range: [-S, S], showgrid: false, zeroline: false, showbackground: false, showticklabels: false, showspikes: false, visible: false },
+      zaxis: { title: "", range: [-S, S], showgrid: false, zeroline: false, showbackground: false, showticklabels: false, showspikes: false, visible: false },
+      aspectmode: "cube",
+      bgcolor: "#0f1220"
+    },
+    margin: { l: 0, r: 0, t: 0, b: 0 },
+    legend: { font: { color: "#e6e8f0" }, bgcolor: "rgba(26,30,51,0.7)" },
+    showlegend: true
+  };
+
+  Plotly.react("plot", traces, layout, { responsive: true, displayModeBar: true });
+
+  // Actualizar info de dimensión
+  const dimEl = document.getElementById("dim");
+  const descEl = document.getElementById("dimDesc");
+  dimEl.textContent = r;
+  const descs = {
+    0: "Solo el vector nulo (un punto en el origen).",
+    1: "Una recta que pasa por el origen.",
+    2: "Un plano que pasa por el origen.",
+    3: "Todo el espacio R³."
+  };
+  descEl.textContent = descs[r] || "";
+}
+
+function runTest() {
+  const vectors = getVectors();
+  const w = getTestVector();
+  const el = document.getElementById("testResult");
+  if (!w) {
+    el.innerHTML = `<div class="result out">Vector de prueba inválido.</div>`;
+    return;
+  }
+  const res = belongs(vectors, w);
+  if (res.belongs) {
+    const coeffs = findCoefficients(vectors, w);
+    let comboHtml = "";
+    if (coeffs) {
+      const terms = coeffs
+        .map((c, i) => `${fmtNum(c)}·v${i + 1}`)
+        .join(" + ");
+      comboHtml = `<br><small>w = ${terms}</small>`;
+    }
+    el.innerHTML = `<div class="result in">✔ <b>w pertenece</b> a gen{ v₁, … }.<br>
+      El vector se puede escribir como combinación lineal de los generadores.${comboHtml}</div>`;
+  } else {
+    el.innerHTML = `<div class="result out">✘ <b>w NO pertenece</b> a gen{ v₁, … }.<br>
+      No existe ninguna combinación lineal de los generadores que dé w.</div>`;
+  }
+}
+
+// Formatea un número: entero limpio, o hasta 3 decimales sin ceros sobrantes
+function fmtNum(x) {
+  if (Math.abs(x) < 1e-9) x = 0;
+  const r = Math.round(x);
+  if (Math.abs(x - r) < 1e-9) return String(r);
+  return parseFloat(x.toFixed(3)).toString();
+}
+
+function update() { draw(); if (getTestVector()) runTest(); }
+
+// ---------- Inicialización ----------
+
+document.getElementById("addVector").addEventListener("click", () => { addVectorRow(); update(); });
+document.getElementById("updateBtn").addEventListener("click", update);
+document.getElementById("testBtn").addEventListener("click", runTest);
+document.getElementById("showTest").addEventListener("change", update);
+["tx","ty","tz"].forEach(id => document.getElementById(id).addEventListener("input", debouncedUpdate));
+
+defaultVectors.forEach(v => addVectorRow(v));
+draw();
+runTest();
+</script>
+</body>
+</html>
