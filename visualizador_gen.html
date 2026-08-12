@@ -265,6 +265,8 @@ function solveLinear(A, b) {
 
 // ---------- Estado / UI ----------
 
+const palette = ["#6ea8fe", "#f6c177", "#c792ea", "#4dd0e1", "#ffab91"];
+
 const vectorsDiv = document.getElementById("vectors");
 let vectorCount = 0;
 
@@ -272,6 +274,13 @@ const defaultVectors = [
   ["3/10", "1", "0"],
   ["1/5", "0", "1"],
 ];
+
+// Actualiza el color de todos los labels según su posición actual en el DOM
+function refreshLabelColors() {
+  vectorsDiv.querySelectorAll(".vector-row").forEach((row, i) => {
+    row.querySelector(".label").style.color = palette[i % palette.length];
+  });
+}
 
 function addVectorRow(vals = ["", "", ""]) {
   vectorCount++;
@@ -288,12 +297,14 @@ function addVectorRow(vals = ["", "", ""]) {
   `;
   row.querySelector(".remove").addEventListener("click", () => {
     row.remove();
+    refreshLabelColors();
     update();
   });
   row.querySelectorAll("input").forEach(inp =>
     inp.addEventListener("input", debouncedUpdate)
   );
   vectorsDiv.appendChild(row);
+  refreshLabelColors();
 }
 
 function getVectors() {
@@ -322,7 +333,7 @@ function arrowTrace(v, color, name) {
     type: "scatter3d", mode: "lines",
     x: [0, v[0]], y: [0, v[1]], z: [0, v[2]],
     line: { color, width: 6 },
-    name, showlegend: true
+    name, showlegend: true, hoverinfo: "skip"
   };
   const head = {
     type: "cone",
@@ -476,7 +487,6 @@ function draw() {
   traces.push(...spanTraces(vectors, r, S));
 
   // Vectores generadores (flechas)
-  const palette = ["#6ea8fe", "#f6c177", "#c792ea", "#4dd0e1", "#ffab91"];
   vectors.forEach((v, i) => {
     traces.push(...arrowTrace(v, palette[i % palette.length], `v${i+1}`));
   });
